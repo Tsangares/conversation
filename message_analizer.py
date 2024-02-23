@@ -66,14 +66,23 @@ def plot_sentiment(conversation,names=['You','Me']):
 
 
 if __name__ == "__main__":
-    # Argparse input for conversation ID and filepath
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("filepath", type=str, help="The filepath to the signal messages")
-    parser.add_argument("conversation_id", type=str, help="The conversation ID")
-    args = parser.parse_args()
-    CONVERSATION_ID = args.conversation_id
+    # If there is an env then ignore the arguments
+    import os
+    if os.path.isfile(".env"):
+        from dotenv import load_dotenv
+        load_dotenv()
+        CONVERSATION_ID = os.getenv("CONVERSATION_ID")
+        FILEPATH = os.getenv("FILEPATH")
+    else:
+        # Argparse input for conversation ID and filepath
+        import argparse
+        parser = argparse.ArgumentParser()
+        parser.add_argument("filepath", type=str, help="The filepath to the signal messages")
+        parser.add_argument("conversation_id", type=str, help="The conversation ID")
+        args = parser.parse_args()
+        CONVERSATION_ID = args.conversation_id
+        FILEPATH = args.filepath
     
-    df = get_signal_messages()
+    df = get_signal_messages(FILEPATH)
     df = get_conversation(df, CONVERSATION_ID)
     plot_sentiment(df)
