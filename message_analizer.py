@@ -46,9 +46,9 @@ def plot_sentiment(conversation,names=['You','Me']):
     #Splitting conversation
     you, me = split_conversation(conversation)
     
-    #Averaging sentiment by week
-    your_ave = you.groupby( pd.Grouper(key='time', freq='W-MON'))['sentiment'].median().reset_index().sort_values('time')
-    my_ave = me.groupby( pd.Grouper(key='time', freq='W-MON'))['sentiment'].median().reset_index().sort_values('time')
+    #Averaging sentiment by day
+    your_ave = you.groupby( pd.Grouper(key='time', freq='9D'))['sentiment'].mean().reset_index().sort_values('time')
+    my_ave = me.groupby( pd.Grouper(key='time', freq='9D'))['sentiment'].mean().reset_index().sort_values('time')
     your_name = names[0]
     my_name = names[1]
     
