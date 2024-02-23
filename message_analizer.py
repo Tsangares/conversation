@@ -41,7 +41,11 @@ def get_conversation(df, _id):
 def split_conversation(convo):
     return convo[convo['type'] == "incoming"], convo[convo['type'] == "outgoing"]
 
-def plot_sentiment(conversation,names=['You','Me']):
+def concatenate_day(df,time_column='time',concatenate_column='body'):
+    return df.groupby('time')['body'].transform(lambda x: '; '.join(x).replace('\n','; ')).drop_duplicates()
+
+
+def plot_sentiment_aggregate(conversation,names=['You','Me']):
     conversation = get_sentiment(conversation)
     #Splitting conversation
     you, me = split_conversation(conversation)
@@ -64,6 +68,33 @@ def plot_sentiment(conversation,names=['You','Me']):
     ax.set_ylabel("Sentiment")
     plt.show()
 
+def plot_sentiment_concatenated(conversation,names=['You','Me']):
+    #Splitting conversation
+    you, me = split_conversation(df)
+    
+    #Combining days
+    you = concatenate_day(you)
+    me = concatenate_day(me)
+    
+    #Getting sentiment per day
+    you = get_sentiment(you)
+    me = get_sentiment(me)
+    
+    #Getting names
+    your_name = names[0]
+    my_name = names[1]
+    
+    #Plotting
+    fig, ax = plt.subplots(figsize=(10,5))
+    ax.scatter(you['time'], you['sentiment'],label=your_name)
+    ax.scatter(me['time'], me['sentiment'],label=my_name)
+    ax.legend()
+    ax.set_title("Sentiment over time")
+    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+
+    ax.set_xlabel("Time")
+    ax.set_ylabel("Sentiment")
+    plt.show()
 
 if __name__ == "__main__":
     # If there is an env then ignore the arguments
@@ -85,4 +116,4 @@ if __name__ == "__main__":
     
     df = get_signal_messages(FILEPATH)
     df = get_conversation(df, CONVERSATION_ID)
-    plot_sentiment(df)
+    plot_sentiment_concatenated(df)
