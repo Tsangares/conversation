@@ -7,7 +7,9 @@ from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 import nltk
 from nltk.corpus import stopwords
 #nltk.download('stopwords')
-   
+from statsmodels.formula.api import ols
+import statsmodels.api as sm
+
 
 # To help find the conversation ID
 def print_random_conversations():
@@ -21,12 +23,14 @@ def get_signal_messages(filepath,months=12):
     #Cut time
     df.dropna(subset=['body'],inplace=True)
     df = df[df['time'] > datetime.datetime.now() - datetime.timedelta(days=30*months)]
+    print(df.columns)
     #df = df.get_sentiment(df)
     #df = df[['time','sentiment','positive','negative','neutral','body','type']]
     return df
     
 def get_sentiment(df):
     analyzer = SentimentIntensityAnalyzer()
+
     df['positive'] = df['body'].map(lambda x: analyzer.polarity_scores(x)['pos'])
     df['negative'] = df['body'].map(lambda x: analyzer.polarity_scores(x)['neg'])
     df['neutral'] = df['body'].map(lambda x: analyzer.polarity_scores(x)['neu'])
@@ -45,14 +49,35 @@ def concatenate_day(df,time_column='time',concatenate_column='body'):
     return df.groupby('time')['body'].transform(lambda x: '; '.join(x).replace('\n','; ')).drop_duplicates()
 
 
-def plot_sentiment_aggregate(conversation,names=['You','Me']):
+def plot_sentiment_aggregate(conversation, names=['You','Me'], measure='mean', days='9D'):
     conversation = get_sentiment(conversation)
+    conversation = conversation[conversation['sentiment'].notna()]
     #Splitting conversation
     you, me = split_conversation(conversation)
-    
+    you = you[you['sentiment'].notna()]
+    me = me[me['sentiment'].notna()]
+
     #Averaging sentiment by day
-    your_ave = you.groupby( pd.Grouper(key='time', freq='9D'))['sentiment'].mean().reset_index().sort_values('time')
-    my_ave = me.groupby( pd.Grouper(key='time', freq='9D'))['sentiment'].mean().reset_index().sort_values('time')
+    your_ave = you.groupby( pd.Grouper(key='time', freq=days))['sentiment'].mean().reset_index().sort_values('time')
+    my_ave = me.groupby( pd.Grouper(key='time', freq=days))['sentiment'].mean().reset_index().sort_values('time')
+    if measure=='var':
+        your_ave = you.groupby( pd.Grouper(key='time', freq=days))['sentiment'].var().reset_index().sort_values('time')
+        my_ave = me.groupby( pd.Grouper(key='time', freq=days))['sentiment'].var().reset_index().sort_values('time')
+    if measure=='median':
+        your_ave = your_ave[your_ave['sentiment'] > 0.01]
+        my_ave = my_ave[my_ave['sentiment'] > 0.01]
+        your_ave = you.groupby( pd.Grouper(key='time', freq=days))['sentiment'].median().reset_index().sort_values('time')
+        my_ave = me.groupby( pd.Grouper(key='time', freq=days))['sentiment'].median().reset_index().sort_values('time')
+    
+    degree_fit = 2
+    you_sentiment_fit = your_ave[your_ave['sentiment'].notna()]
+    my_sentiment_fit = my_ave[your_ave['sentiment'].notna()]
+
+    rlen=you_sentiment_fit['sentiment'].size
+    fit_you = np.polyfit(range(rlen), you_sentiment_fit['sentiment'], deg=degree_fit)
+    rlen=my_sentiment_fit['sentiment'].size
+    fit_me = np.polyfit(range(rlen), my_sentiment_fit['sentiment'], deg=degree_fit)
+
     your_name = names[0]
     my_name = names[1]
     
@@ -64,26 +89,26 @@ def plot_sentiment_aggregate(conversation,names=['You','Me']):
     ax.set_title("Sentiment over time")
     ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
 
+    
+    ax.plot(your_ave['time'][:rlen], np.polyval(fit_you, range(rlen)), color='blue')
+    ax.plot(my_ave['time'][:rlen], np.polyval(fit_me, range(rlen)), color='orange')
+
     ax.set_xlabel("Time")
-    ax.set_ylabel("Sentiment")
+    ax.set_ylabel("Sentiment "+measure)
     plt.show()
+
+    
 
 def plot_sentiment_concatenated(conversation,names=['You','Me']):
     #Splitting conversation
-    you, me = split_conversation(df)
-    
-    #Combining days
-    you = concatenate_day(you)
-    me = concatenate_day(me)
-    
-    #Getting sentiment per day
-    you = get_sentiment(you)
-    me = get_sentiment(me)
+    conversation = get_sentiment(conversation)
+    you, me = split_conversation(conversation)
     
     #Getting names
     your_name = names[0]
     my_name = names[1]
     
+    # print(you)
     #Plotting
     fig, ax = plt.subplots(figsize=(10,5))
     ax.scatter(you['time'], you['sentiment'],label=your_name)
