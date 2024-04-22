@@ -9,6 +9,7 @@ from nltk.corpus import stopwords
 #nltk.download('stopwords')
 from statsmodels.formula.api import ols
 import statsmodels.api as sm
+import seaborn as sns
 
 
 # To help find the conversation ID
@@ -49,7 +50,7 @@ def concatenate_day(df,time_column='time',concatenate_column='body'):
     return df.groupby('time')['body'].transform(lambda x: '; '.join(x).replace('\n','; ')).drop_duplicates()
 
 
-def plot_sentiment_aggregate(conversation, names=['You','Me'], measure='mean', days='9D'):
+def plot_sentiment_aggregate(conversation, names=['You','Me'], measure='mean', days='9D', your_name='You', my_name='Me'):
     conversation = get_sentiment(conversation)
     conversation = conversation[conversation['sentiment'].notna()]
     #Splitting conversation
@@ -57,6 +58,10 @@ def plot_sentiment_aggregate(conversation, names=['You','Me'], measure='mean', d
     you = you[you['sentiment'].notna()]
     me = me[me['sentiment'].notna()]
 
+    #Averaging sentiment by day
+    your_ave = you.groupby( pd.Grouper(key='time', freq=days))['sentiment'].mean().reset_index().sort_values('time')
+    my_ave = me.groupby( pd.Grouper(key='time', freq=days))['sentiment'].mean().reset_index().sort_values('time')
+   
     #Averaging sentiment by day
     your_ave = you.groupby( pd.Grouper(key='time', freq=days))['sentiment'].mean().reset_index().sort_values('time')
     my_ave = me.groupby( pd.Grouper(key='time', freq=days))['sentiment'].mean().reset_index().sort_values('time')
@@ -69,35 +74,40 @@ def plot_sentiment_aggregate(conversation, names=['You','Me'], measure='mean', d
         your_ave = you.groupby( pd.Grouper(key='time', freq=days))['sentiment'].median().reset_index().sort_values('time')
         my_ave = me.groupby( pd.Grouper(key='time', freq=days))['sentiment'].median().reset_index().sort_values('time')
     
-    degree_fit = 2
-    you_sentiment_fit = your_ave[your_ave['sentiment'].notna()]
-    my_sentiment_fit = my_ave[your_ave['sentiment'].notna()]
+    your_ave['jtime']    = pd.DatetimeIndex(your_ave['time']).to_julian_date()
+    my_ave['jtime']    = pd.DatetimeIndex(your_ave['time']).to_julian_date()
 
-    rlen=you_sentiment_fit['sentiment'].size
-    fit_you = np.polyfit(range(rlen), you_sentiment_fit['sentiment'], deg=degree_fit)
-    rlen=my_sentiment_fit['sentiment'].size
-    fit_me = np.polyfit(range(rlen), my_sentiment_fit['sentiment'], deg=degree_fit)
-
-    your_name = names[0]
-    my_name = names[1]
-    
-    #Plotting
-    fig, ax = plt.subplots(figsize=(10,5))
-    ax.scatter(your_ave['time'], your_ave['sentiment'],label=your_name)
-    ax.scatter(my_ave['time'], my_ave['sentiment'],label=my_name)
-    ax.legend()
-    ax.set_title("Sentiment over time")
-    ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
-
-    
-    ax.plot(your_ave['time'][:rlen], np.polyval(fit_you, range(rlen)), color='blue')
-    ax.plot(my_ave['time'][:rlen], np.polyval(fit_me, range(rlen)), color='orange')
-
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Sentiment "+measure)
+    ax = sns.regplot(x = "jtime", y = "sentiment", data = your_ave, label = your_name)
+    ax = sns.regplot(x = "jtime", y = "sentiment", data = my_ave,   label = my_name)
+    ax.set_ylabel('Senteiment')
+    ax.set_xlabel('Date')
+    ax.set_xticks(your_ave['jtime'])
+    plt.legend()
+    _ = ax.set_xticklabels(your_ave['time'].dt.date, rotation=45, ha='right')
+    ax.set_title('Sentiment over time')
     plt.show()
 
-    
+def plot_time_between_messages(df):
+    df_you, df_me = split_conversation(df)
+
+    def make_diff_df(in_df):
+        df_diff             = in_df.groupby(pd.Grouper(key='time', freq='35D'))['diffs'].median().reset_index().sort_values('diffs')
+        df_diff['diffs']    = df_diff['diffs'].astype('timedelta64[s]')  / np.timedelta64(1, 's')
+        df_diff             = df_diff[df_diff['diffs'].notna()]
+        df_diff['diffs']    = df_diff['diffs'].astype('str').astype('double').astype(int)
+        df_diff             = df_diff[['diffs','time']].dropna()
+        df_diff['jtime']    = pd.DatetimeIndex(df_diff['time']).to_julian_date()
+        return df_diff
+    you_diff_df = make_diff_df(df_you)
+    me_diff_df  = make_diff_df(df_me)
+
+    ax = sns.regplot(x = "jtime", y = "diffs", data = you_diff_df, label='You')
+    ax = sns.regplot(x = "jtime", y = "diffs", data = me_diff_df, label='Me')
+    plt.legend()
+    ax.set_xticks(you_diff_df['jtime'])
+    _ = ax.set_xticklabels(you_diff_df['time'].dt.date, rotation=45, ha='right')
+    ax.set_title('Time between texts')
+    plt.show()
 
 def plot_sentiment_concatenated(conversation,names=['You','Me']):
     #Splitting conversation
