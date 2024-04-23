@@ -10,6 +10,7 @@ from nltk.corpus import stopwords
 from statsmodels.formula.api import ols
 import statsmodels.api as sm
 import seaborn as sns
+from wordcloud import WordCloud
 
 
 # To help find the conversation ID
@@ -17,16 +18,28 @@ def print_random_conversations():
     for msg in df[['body','conversationId']].sample(10):
         print(msg)
 
-def get_signal_messages(filepath,months=12):
+def get_signal_messages(filepath, id=None, months=12, time_setting='sent_at'):
     df = pd.read_csv(filepath)
-    df['time'] = df['received_at'].map(lambda x: datetime.datetime.fromtimestamp(x/1000.0))
+    if type(id) == 'String':
+        print('gotit')
+        df = get_conversation(id)
+
+    # Handle time
+    df['time'] = df[time_setting].map(lambda x: datetime.datetime.fromtimestamp(x/1000.0))
+
+    # Add some basic columns
+    df['diffs']     = df['time'].sort_values().diff()
+    df['weekday']   = df['time'].dt.day_name()
+    df['hour']      = df['time'].dt.hour
+
     df['time'] = pd.to_datetime(pd.to_datetime(df['time']).dt.date)
-    #Cut time
+
+    # df['time'] = df['sent_at'].map(lambda x: datetime.datetime.fromtimestamp(x/1000.0))
+    
+    # Cut time
     df.dropna(subset=['body'],inplace=True)
     df = df[df['time'] > datetime.datetime.now() - datetime.timedelta(days=30*months)]
-    print(df.columns)
-    #df = df.get_sentiment(df)
-    #df = df[['time','sentiment','positive','negative','neutral','body','type']]
+    # print(df.columns)
     return df
     
 def get_sentiment(df):
@@ -81,10 +94,30 @@ def plot_sentiment_aggregate(conversation, names=['You','Me'], measure='mean', d
     ax = sns.regplot(x = "jtime", y = "sentiment", data = my_ave,   label = my_name)
     ax.set_ylabel('Senteiment')
     ax.set_xlabel('Date')
-    ax.set_xticks(your_ave['jtime'])
+
+    xtick_val = 4
+    if len(your_ave['jtime']) > 10:
+        xtick_val = len(your_ave['jtime'])//3
+
+    ax.set_xticks(your_ave['jtime'][::xtick_val])
     plt.legend()
-    _ = ax.set_xticklabels(your_ave['time'].dt.date, rotation=45, ha='right')
+    _ = ax.set_xticklabels(your_ave['time'].dt.date[::xtick_val], rotation=45, ha='right')
     ax.set_title('Sentiment over time')
+    plt.show()
+
+def plot_sentiment_time_of_day(conversation, names=['You','Me'], measure='mean', days='9D', your_name='You', my_name='Me'):
+    conversation = get_sentiment(conversation)
+    conversation = conversation[conversation['sentiment'].notna()]
+    #Splitting conversation
+    you, me = split_conversation(conversation)
+    you = you[you['sentiment'].notna() & you['sentiment'] != 0]
+    me = me[me['sentiment'].notna() & me['sentiment'] != 0]
+    you_hour = you.groupby('hour')['sentiment'].median()
+    me_hour  = me.groupby('hour')['sentiment'].median()
+    new_df      = pd.DataFrame(index=you_hour.index, data={'you': you_hour.values, 'me': me_hour.values})
+    new_df.plot.bar(title='Sentiment by time of day', ylabel='Sentiment score', xlabel='Hour in day')
+    
+    plt.legend()
     plt.show()
 
 def plot_time_between_messages(df):
@@ -107,6 +140,31 @@ def plot_time_between_messages(df):
     ax.set_xticks(you_diff_df['jtime'])
     _ = ax.set_xticklabels(you_diff_df['time'].dt.date, rotation=45, ha='right')
     ax.set_title('Time between texts')
+    plt.show()
+
+def wordclouds(conversation):
+
+    stop = stopwords.words('english')
+
+    df_you, df_me = split_conversation(conversation)
+
+    words_me  = df_me['body'].str.split(expand=True).stack()
+    words_you = df_you['body'].str.split(expand=True).stack()
+
+    words_me = words_me.apply(lambda x: ' '.join([word for word in x.split() if word not in (stop) and 'http' not in word]))
+    words_you = words_you.apply(lambda x: ' '.join([word for word in x.split() if word not in (stop) and 'http' not in word]))
+
+    wordcloud2 = WordCloud(collocations = False, background_color = 'white').generate(' '.join(list(words_you)))
+    # Generate plot
+    plt.imshow(wordcloud2)
+    plt.axis("off")
+    plt.title('Your word cloud')
+    plt.show()
+    wordcloud2 = WordCloud(collocations = False, background_color = 'white').generate(' '.join(list(words_me)))
+    # Generate plot
+    plt.imshow(wordcloud2)
+    plt.axis("off")
+    plt.title('My word cloud')
     plt.show()
 
 def plot_sentiment_concatenated(conversation,names=['You','Me']):
